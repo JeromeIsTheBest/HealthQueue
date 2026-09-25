@@ -21,7 +21,7 @@ if ($pdo && $clinicId) {
         $clinicName = (string) $nameStmt->fetchColumn() ?: $clinicName;
 
         $stmt = $pdo->prepare(
-            "SELECT q.QueueNumber, q.Status, q.PhysicianID, phy.LastName AS PhyLastName
+            "SELECT q.QueueNumber, q.ScheduledNumber, q.RegularNumber, q.Status, q.PhysicianID, phy.LastName AS PhyLastName
              FROM Queue q LEFT JOIN Users phy ON phy.UserID = q.PhysicianID
              WHERE q.ClinicID = ? AND DATE(q.CreatedAt) = CURDATE() AND q.Status IN ('Waiting', 'Calling', 'Serving')
              ORDER BY COALESCE(q.Position, q.QueueNumber * 10), q.QueueNumber"
@@ -32,9 +32,9 @@ if ($pdo && $clinicId) {
             $key = $row['PhysicianID'] ?: 0;
             $lanes[$key] ??= ['name' => $row['PhyLastName'] ? 'Dr. ' . $row['PhyLastName'] : 'General', 'current' => [], 'next' => []];
             if ($row['Status'] === 'Waiting') {
-                $lanes[$key]['next'][] = (int) $row['QueueNumber'];
+                $lanes[$key]['next'][] = $row['ScheduledNumber'] !== null ? 'S-' . (int) $row['ScheduledNumber'] : (int) ($row['RegularNumber'] ?? $row['QueueNumber']);
             } else {
-                $lanes[$key]['current'][] = ['number' => (int) $row['QueueNumber'], 'calling' => $row['Status'] === 'Calling'];
+                $lanes[$key]['current'][] = ['number' => $row['ScheduledNumber'] !== null ? 'S-' . (int) $row['ScheduledNumber'] : (int) ($row['RegularNumber'] ?? $row['QueueNumber']), 'calling' => $row['Status'] === 'Calling'];
             }
         }
     } catch (PDOException $e) {

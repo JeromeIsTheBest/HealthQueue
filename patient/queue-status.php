@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             // Scoped to this patient's own active entry for today.
             $lookup = $pdo->prepare(
-                "SELECT q.QueueID, q.QueueNumber, q.ClinicID, q.Status, a.AppointmentID, a.BookingFeePaid, c.ClinicName, c.BaseConsultationFee
+                "SELECT q.QueueID, q.QueueNumber, q.ScheduledNumber, q.RegularNumber, q.ClinicID, q.Status, a.AppointmentID, a.BookingFeePaid, c.ClinicName, c.BaseConsultationFee
                  FROM Queue q
                  JOIN Appointments a ON a.AppointmentID = q.AppointmentID
                  JOIN Clinic c ON c.ClinicID = q.ClinicID
@@ -82,7 +82,7 @@ $dataError = null;
 if ($pdo) {
     try {
         $stmt = $pdo->prepare(
-            "SELECT q.QueueID, q.QueueNumber, q.Status, q.ClinicID, c.ClinicName, a.Concern,
+            "SELECT q.QueueID, q.QueueNumber, q.ScheduledNumber, q.RegularNumber, q.Status, q.ClinicID, c.ClinicName, a.Concern,
                     phy.FirstName AS PhyFirstName, phy.LastName AS PhyLastName
              FROM Queue q
              JOIN Appointments a ON a.AppointmentID = q.AppointmentID
@@ -176,7 +176,7 @@ if ($entries):
       </div>
 
       <div class="lq-stats">
-        <div class="lq-stat lq-stat-mine"><span>Your number</span><strong>#<?= (int) $entry['QueueNumber'] ?></strong><em><?= htmlspecialchars($entry['Status'] === 'Waiting' ? 'In line' : ($entry['Status'] === 'Calling' ? 'Called' : 'Being seen')) ?></em></div>
+        <div class="lq-stat lq-stat-mine"><span>Your number</span><strong><?= $entry['ScheduledNumber'] !== null ? 'S-' . (int) $entry['ScheduledNumber'] : '#' . (int) ($entry['RegularNumber'] ?? $entry['QueueNumber']) ?></strong><em><?= htmlspecialchars($entry['Status'] === 'Waiting' ? 'In line' : ($entry['Status'] === 'Calling' ? 'Called' : 'Being seen')) ?></em></div>
         <div class="lq-stat"><span>Now serving</span><strong><?= $entry['NowServing'] ? '#' . (int) $entry['NowServing'] : '—' ?></strong></div>
         <div class="lq-stat"><span>Ahead of you</span><strong><?= (int) $entry['Ahead'] ?></strong></div>
         <div class="lq-stat"><span>Est. wait</span><strong><?= $entry['Status'] === 'Waiting' ? '~' . (int) $entry['WaitMinutes'] . '<small> min</small>' : 'Now' ?></strong></div>

@@ -67,13 +67,14 @@ if ($pdo) {
         <div>
           <div class="form-stack">
             <label>Preferred time
-              <select name="appointment_time" id="bookNowTimeSelect" required disabled>
+              <select name="appointment_time" id="bookNowTimeSelect" disabled>
                 <option value="">Pick a date first</option>
               </select>
             </label>
             <label>Reason for visit <span class="optional">(optional)</span><textarea name="concern" rows="5" placeholder="Briefly describe what you need help with."></textarea></label>
           </div>
 
+          <p class="form-message warning">No time selected? Join the regular queue for that day; this is not a scheduled appointment time.</p>
           <div class="booking-fee-card" id="bookNowFeeCard" style="display:none;">
             <div class="fee-row"><span>Consultation fee</span><span id="bookNowFeeAmount"></span></div>
             <div class="fee-row fee-total"><span>Total</span><span id="bookNowTotalAmount"></span></div>
@@ -215,8 +216,7 @@ document.addEventListener('DOMContentLoaded', function () {
       .then(function (res) { return res.json(); })
       .then(function (data) {
         var times = data.times || [];
-        if (!times.length) { resetTimes('No open times on this date'); return; }
-        timeSelect.innerHTML = '<option value="">Select a time</option>' + times.map(function (t) {
+        timeSelect.innerHTML = '<option value="">Regular queue (no specific time)</option>' + times.map(function (t) {
           return '<option value="' + t.value + '">' + t.label + '</option>';
         }).join('');
         timeSelect.disabled = false;

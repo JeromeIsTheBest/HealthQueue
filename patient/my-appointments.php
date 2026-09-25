@@ -152,7 +152,7 @@ if ($pdo) {
 
         // Today's live queue entry (if any) is pinned above the list.
         $queueStmt = $pdo->prepare(
-            "SELECT q.QueueNumber, q.Status, q.ClinicID, c.ClinicName, c.Address,
+            "SELECT q.QueueNumber, q.ScheduledNumber, q.RegularNumber, q.Status, q.ClinicID, c.ClinicName, c.Address,
                     a.AppointmentID, a.AppointmentTime, a.Concern,
                     phy.FirstName AS PhyFirstName, phy.LastName AS PhyLastName
              FROM Queue q
@@ -247,7 +247,7 @@ require __DIR__ . '/../includes/header.php';
           <h2><?= htmlspecialchars($activeQueue['ClinicName']) ?></h2>
           <p><?= htmlspecialchars($queueMeta) ?></p>
         </div>
-        <div class="ma-live-number"><span>Your number</span><strong>#<?= (int) $activeQueue['QueueNumber'] ?></strong></div>
+        <div class="ma-live-number"><span>Your number</span><strong><?= $activeQueue['ScheduledNumber'] !== null ? 'S-' . (int) $activeQueue['ScheduledNumber'] : '#' . (int) ($activeQueue['RegularNumber'] ?? $activeQueue['QueueNumber']) ?></strong></div>
       </div>
       <div class="ma-live-progress-row">
         <span>

@@ -62,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form_type'] ?? '') === 'su
         $errors[] = 'This request can no longer be paid for.';
     } elseif (!($clinicLocked = lockClinicBooking($pdo, (int) $appointment['ClinicID']))) {
         $errors[] = 'The clinic is busy right now. Please try again in a moment.';
-    } elseif (!isBookable($pdo, (int) $appointment['ClinicID'], $appointment['PhysicianID'] ? (int) $appointment['PhysicianID'] : null, $appointment['AppointmentDate'], $appointment['AppointmentTime'], (int) $appointmentId)) {
+    } elseif ($appointment['AppointmentTime'] !== null && !isBookable($pdo, (int) $appointment['ClinicID'], $appointment['PhysicianID'] ? (int) $appointment['PhysicianID'] : null, $appointment['AppointmentDate'], $appointment['AppointmentTime'], (int) $appointmentId)) {
         // The unpaid hold expired and the slot was taken (or it's no longer open).
         $errors[] = 'Sorry, this time slot was taken while your request was unpaid. Please reschedule it from My Appointments, then pay.';
     } else {

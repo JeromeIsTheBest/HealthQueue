@@ -141,7 +141,7 @@ CREATE TABLE IF NOT EXISTS Appointments (
     ClinicID        INT NOT NULL,
     PhysicianID     INT NULL,
     AppointmentDate DATE NOT NULL,
-    AppointmentTime TIME NOT NULL,
+    AppointmentTime TIME NULL,
     Concern         TEXT NULL,
     Status          VARCHAR(20) NOT NULL DEFAULT 'Pending',
     -- The simulated checkout gate: a request only reaches the clinic's
@@ -270,6 +270,8 @@ CREATE TABLE IF NOT EXISTS Queue (
     AppointmentID    INT NOT NULL,
     PhysicianID      INT NULL,
     QueueNumber      INT NOT NULL,
+    ScheduledNumber  INT NULL,
+    RegularNumber    INT NULL,
     Status           VARCHAR(20) NOT NULL DEFAULT 'Waiting', -- Waiting, Calling, Serving, Completed, Forfeited_Late, Removed
     CreatedByStaffID INT NULL,
     CreatedAt        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -423,12 +425,16 @@ CREATE TABLE IF NOT EXISTS AnnouncementDismissals (
 ALTER TABLE Appointments
     ADD COLUMN IF NOT EXISTS DeclineReason VARCHAR(255) NULL AFTER CancellationReason;
 
+ALTER TABLE Appointments MODIFY COLUMN AppointmentTime TIME NULL;
+
 -- Queue ordering + priority. Position lets front-desk staff reorder the
 -- waiting line (NULL = natural order, QueueNumber * 10); Priority tags
 -- walk-ins such as seniors/PWD/pregnant who are placed ahead of the line.
 ALTER TABLE Queue
     ADD COLUMN IF NOT EXISTS Position INT         NULL AFTER QueueNumber,
-    ADD COLUMN IF NOT EXISTS Priority VARCHAR(20) NULL AFTER Position;
+    ADD COLUMN IF NOT EXISTS Priority VARCHAR(20) NULL AFTER Position,
+    ADD COLUMN IF NOT EXISTS ScheduledNumber INT NULL AFTER QueueNumber,
+    ADD COLUMN IF NOT EXISTS RegularNumber INT NULL AFTER ScheduledNumber;
 
 -- Optional photo attached to an announcement (file in assets/uploads/announcements).
 ALTER TABLE Announcements

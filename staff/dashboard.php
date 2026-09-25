@@ -34,8 +34,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $next = $pdo->prepare(
                 "SELECT q.QueueID, q.QueueNumber, a.PatientID, a.AppointmentID FROM Queue q
                  JOIN Appointments a ON a.AppointmentID = q.AppointmentID
-                 WHERE q.ClinicID = ? AND DATE(q.CreatedAt) = CURDATE() AND q.Status = 'Waiting'
-                 ORDER BY q.QueueNumber LIMIT 1"
+                 WHERE q.ClinicID = ? AND DATE(q.CreatedAt) = CURDATE() AND q.Status = 'Waiting' AND (a.AppointmentTime IS NULL OR TIMESTAMP(a.AppointmentDate, a.AppointmentTime) <= NOW()) AND NOT EXISTS (SELECT 1 FROM Queue activeQ WHERE activeQ.ClinicID = q.ClinicID AND activeQ.Status IN ('Calling', 'Serving'))
+                 ORDER BY CASE WHEN a.AppointmentTime IS NOT NULL AND TIMESTAMP(a.AppointmentDate, a.AppointmentTime) <= NOW() THEN 0 ELSE 1 END, CASE WHEN a.AppointmentTime IS NOT NULL AND TIMESTAMP(a.AppointmentDate, a.AppointmentTime) <= NOW() THEN TIMESTAMP(a.AppointmentDate, a.AppointmentTime) END, q.QueueNumber LIMIT 1"
             );
             $next->execute([$clinicId]);
             $entry = $next->fetch();
@@ -99,7 +99,7 @@ if ($pdo && $clinicId) {
         $stats['avg_wait_yesterday'] = ($v = $waitStmt->fetchColumn()) !== null ? (int) round((float) $v) : null;
 
         $queueStmt = $pdo->prepare(
-            "SELECT q.QueueID, q.QueueNumber, q.Status, a.AppointmentTime, a.BookingFeePaid,
+            "SELECT q.QueueID, q.QueueNumber, q.ScheduledNumber, q.RegularNumber, q.Status, a.AppointmentTime, a.BookingFeePaid,
                     pat.FirstName, pat.LastName, phy.LastName AS PhyLastName
              FROM Queue q
              JOIN Appointments a ON a.AppointmentID = q.AppointmentID
@@ -171,7 +171,7 @@ require __DIR__ . '/../includes/header.php';
       <form method="post">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
         <input type="hidden" name="form_type" value="call_next">
-        <button type="submit" class="btn sd-btn-call"<?= $upNext ? '' : ' disabled title="No one is waiting"' ?>>
+        <button type="submit" class="btn sd-btn-call"<?= ($upNext && !$nowServing) ? '' : ' disabled title="A visit is in progress or no one is waiting"' ?>>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
           Call next patient
         </button>
@@ -211,7 +211,7 @@ require __DIR__ . '/../includes/header.php';
       </div>
       <?php if ($nowServing): ?>
         <div class="sd-serving">
-          <div><span>Now <?= $nowServing['Status'] === 'Calling' ? 'calling' : 'serving' ?></span><strong>#<?= (int) $nowServing['QueueNumber'] ?></strong></div>
+          <div><span>Now <?= $nowServing['Status'] === 'Calling' ? 'calling' : 'serving' ?></span><strong><?= $nowServing['ScheduledNumber'] !== null ? 'S-' . (int) $nowServing['ScheduledNumber'] : '#' . (int) ($nowServing['RegularNumber'] ?? $nowServing['QueueNumber']) ?></strong></div>
           <div>
             <b><?= htmlspecialchars($nowServing['FirstName'] . ' ' . $nowServing['LastName']) ?></b>
             <p><?= $nowServing['PhyLastName'] ? 'Dr. ' . htmlspecialchars($nowServing['PhyLastName']) : 'No physician assigned' ?></p>
@@ -222,7 +222,7 @@ require __DIR__ . '/../includes/header.php';
         <ul class="sd-queue">
           <?php foreach (array_slice($upNext, 0, 5) as $i => $entry): ?>
             <li>
-              <span class="sd-num">#<?= (int) $entry['QueueNumber'] ?></span>
+              <span class="sd-num"><?= $entry['ScheduledNumber'] !== null ? 'S-' . (int) $entry['ScheduledNumber'] : '#' . (int) ($entry['RegularNumber'] ?? $entry['QueueNumber']) ?></span>
               <span class="sd-name"><?= htmlspecialchars($entry['FirstName'] . ' ' . $entry['LastName']) ?> <em>· <?= $entry['BookingFeePaid'] ? htmlspecialchars(date('g:i A', strtotime($entry['AppointmentTime']))) : 'walk-in' ?></em></span>
               <span class="sd-wait">~<?= ($i + 1) * MINUTES_PER_PATIENT ?> min</span>
             </li>

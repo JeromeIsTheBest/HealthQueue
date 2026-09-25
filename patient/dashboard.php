@@ -41,7 +41,7 @@ if ($pdo) {
         $records = $recordsStmt->fetchAll();
 
         $queueStmt = $pdo->prepare(
-            "SELECT q.QueueID, q.QueueNumber, q.Status, q.ClinicID, c.ClinicName, c.Address,
+            "SELECT q.QueueID, q.QueueNumber, q.ScheduledNumber, q.RegularNumber, q.Status, q.ClinicID, c.ClinicName, c.Address,
                     a.AppointmentID, a.AppointmentDate, a.AppointmentTime, a.Concern,
                     phy.FirstName AS PhyFirstName, phy.LastName AS PhyLastName
              FROM Queue q
@@ -102,7 +102,7 @@ require __DIR__ . '/../includes/header.php';
           $whenLabel = date('l, F j, Y', strtotime($entry['AppointmentDate'])) . ' at ' . date('g:i A', strtotime($entry['AppointmentTime']));
         ?>
           <div class="queue-hero-card" role="button" tabindex="0" data-queue-detail
-               data-number="<?= (int) $entry['QueueNumber'] ?>"
+               data-number="<?= $entry['ScheduledNumber'] !== null ? 'S-' . (int) $entry['ScheduledNumber'] : '#' . (int) ($entry['RegularNumber'] ?? $entry['QueueNumber']) ?>"
                data-clinic="<?= htmlspecialchars($entry['ClinicName'], ENT_QUOTES) ?>"
                data-address="<?= htmlspecialchars($entry['Address'], ENT_QUOTES) ?>"
                data-status="<?= htmlspecialchars($entry['Status'], ENT_QUOTES) ?>"
@@ -113,7 +113,7 @@ require __DIR__ . '/../includes/header.php';
               <span class="queue-hero-label">Queue</span>
               <span class="queue-hero-live">Live</span>
             </div>
-            <div class="queue-hero-number">#<?= (int) $entry['QueueNumber'] ?></div>
+            <div class="queue-hero-number"><?= $entry['ScheduledNumber'] !== null ? 'S-' . (int) $entry['ScheduledNumber'] : '#' . (int) ($entry['RegularNumber'] ?? $entry['QueueNumber']) ?></div>
             <div class="queue-hero-meta">
               <?php if ($entry['Status'] === 'Waiting'): ?>
                 <?= (int) $entry['AheadCount'] ?> patient(s) ahead &middot; ~<?= (int) $entry['EstimatedWaitMinutes'] ?> mins

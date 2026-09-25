@@ -69,7 +69,7 @@ if ($pdo) {
         $stmt = $pdo->prepare(
             "SELECT a.AppointmentID, a.AppointmentDate, a.AppointmentTime, a.Concern, a.BookingFeePaid,
                     pat.FirstName, pat.LastName,
-                    q.QueueNumber, q.Status AS QueueStatus,
+                    q.QueueNumber, q.ScheduledNumber, q.RegularNumber, q.Status AS QueueStatus,
                     TIMESTAMPDIFF(MINUTE, q.CreatedAt, NOW()) AS WaitingMinutes,
                     TIMESTAMPDIFF(SECOND, q.ServedAt, NOW()) AS ServingSeconds,
                     (SELECT MAX(v.UpdatedAt) FROM ConsultationVersions v JOIN Consultations c ON c.ConsultationID = v.ConsultationID
@@ -142,7 +142,7 @@ require __DIR__ . '/../includes/header.php';
     <?php foreach ($inProgress as $row): ?>
       <?php $secs = max(0, (int) $row['ServingSeconds']); ?>
       <article class="cs-row cs-active">
-        <span class="qm-num">#<?= (int) $row['QueueNumber'] ?></span>
+        <span class="qm-num"><?= $row['ScheduledNumber'] !== null ? 'S-' . (int) $row['ScheduledNumber'] : '#' . (int) ($row['RegularNumber'] ?? $row['QueueNumber']) ?></span>
         <div class="cs-main">
           <strong><?= htmlspecialchars($row['FirstName'] . ' ' . $row['LastName']) ?> <em>· <?= htmlspecialchars($source($row)) ?></em></strong>
           <p><?= htmlspecialchars($concern($row)) ?></p>
@@ -161,7 +161,7 @@ require __DIR__ . '/../includes/header.php';
       <?php foreach ($upNext as $i => $row): ?>
         <?php $mins = (int) $row['WaitingMinutes']; ?>
         <article class="cs-row">
-          <span class="qm-num">#<?= (int) $row['QueueNumber'] ?></span>
+          <span class="qm-num"><?= $row['ScheduledNumber'] !== null ? 'S-' . (int) $row['ScheduledNumber'] : '#' . (int) ($row['RegularNumber'] ?? $row['QueueNumber']) ?></span>
           <div class="cs-main">
             <strong><?= htmlspecialchars($row['FirstName'] . ' ' . $row['LastName']) ?> <em>· <?= htmlspecialchars($source($row)) ?><?= $row['QueueStatus'] === 'Calling' ? ' · being called' : '' ?></em></strong>
             <p><?= htmlspecialchars($concern($row)) ?></p>

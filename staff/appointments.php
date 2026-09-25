@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 // Scoped to this staff member's own clinic so one clinic's
                 // staff can never touch another clinic's appointment requests.
-                $checkStmt = $pdo->prepare("SELECT PhysicianID, PatientID, AppointmentDate FROM Appointments WHERE AppointmentID = ? AND ClinicID = ? AND Status = 'Pending'");
+                $checkStmt = $pdo->prepare("SELECT PhysicianID, PatientID, AppointmentDate, AppointmentTime FROM Appointments WHERE AppointmentID = ? AND ClinicID = ? AND Status = 'Pending'");
                 $checkStmt->execute([$appointmentId, $clinicId]);
                 $existing = $checkStmt->fetch();
 
@@ -58,19 +58,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // Accepting a request is the moment it joins the day's
                         // queue -- walk-ins get a queue number at registration,
                         // so an accepted online request needs the same step.
-                        $queueNumStmt = $pdo->prepare('SELECT COALESCE(MAX(QueueNumber), 0) + 1 FROM Queue WHERE ClinicID = ? AND DATE(CreatedAt) = CURDATE()');
-                        $queueNumStmt->execute([$clinicId]);
+                        $queueNumStmt = $pdo->prepare('SELECT COALESCE(MAX(QueueNumber), 0) + 1 FROM Queue WHERE ClinicID = ? AND DATE(CreatedAt) = ?');
+                        $queueNumStmt->execute([$clinicId, $existing['AppointmentDate']]);
                         $queueNumber = (int) $queueNumStmt->fetchColumn();
+                        $scheduledNumber = null;
+                        $regularNumber = null;
+                        if ($existing['AppointmentTime'] !== null) {
+                            $scheduledNumStmt = $pdo->prepare(
+                                "SELECT COALESCE(MAX(q.ScheduledNumber), 0) + 1
+                                 FROM Queue q JOIN Appointments a ON a.AppointmentID = q.AppointmentID
+                                 WHERE q.ClinicID = ? AND DATE(a.AppointmentDate) = ? AND q.ScheduledNumber IS NOT NULL"
+                            );
+                            $scheduledNumStmt->execute([$clinicId, $existing['AppointmentDate']]);
+                            $scheduledNumber = (int) $scheduledNumStmt->fetchColumn();
+                        } else {
+                            $regularNumStmt = $pdo->prepare(
+                                "SELECT COALESCE(MAX(RegularNumber), 0) + 1 FROM Queue
+                                 WHERE ClinicID = ? AND DATE(CreatedAt) = ? AND RegularNumber IS NOT NULL"
+                            );
+                            $regularNumStmt->execute([$clinicId, $existing['AppointmentDate']]);
+                            $regularNumber = (int) $regularNumStmt->fetchColumn();
+                        }
 
+                        $ticketToken = $scheduledNumber !== null ? 'S-' . $scheduledNumber : '#' . $regularNumber;
                         $insertQueue = $pdo->prepare(
-                            "INSERT INTO Queue (ClinicID, AppointmentID, PhysicianID, QueueNumber, Status, CreatedByStaffID) VALUES (?, ?, ?, ?, 'Waiting', ?)"
+                            "INSERT INTO Queue (ClinicID, AppointmentID, PhysicianID, QueueNumber, ScheduledNumber, RegularNumber, Status, CreatedByStaffID, CreatedAt) VALUES (?, ?, ?, ?, ?, ?, 'Waiting', ?, GREATEST(NOW(), TIMESTAMP(?, COALESCE(?, '00:00:00'))))"
                         );
-                        $insertQueue->execute([$clinicId, $appointmentId, $physicianId ?: $existing['PhysicianID'], $queueNumber, $user['UserID']]);
+                        $insertQueue->execute([$clinicId, $appointmentId, $physicianId ?: $existing['PhysicianID'], $queueNumber, $scheduledNumber, $regularNumber, $user['UserID'], $existing['AppointmentDate'], $existing['AppointmentTime']]);
 
                         $pdo->commit();
-                        logActivity($pdo, $user['UserID'], $clinicId, 'Accepted appointment request', "Appointment #{$appointmentId}, queue #{$queueNumber}");
-                        notifyPatient($pdo, (int) $existing['PatientID'], 'Your appointment on ' . $existing['AppointmentDate'] . ' has been confirmed. Your queue number is #' . $queueNumber . '.', $appointmentId);
-                        $flash = "Appointment request accepted as queue #{$queueNumber}.";
+                        logActivity($pdo, $user['UserID'], $clinicId, 'Accepted appointment request', "Appointment #{$appointmentId}, queue {$ticketToken}");
+                        notifyPatient($pdo, (int) $existing['PatientID'], 'Your appointment on ' . $existing['AppointmentDate'] . ' has been confirmed. Your queue number is ' . $ticketToken . '.', $appointmentId);
+                        $flash = "Appointment request accepted as queue {$ticketToken}.";
                     }
                 }
             } catch (PDOException $e) {
@@ -79,12 +98,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = 'We could not accept this request.';
             }
         } elseif ($formType === 'reject_request') {
-            // Reason is chosen from chips ("Fully booked", ...) or typed under
-            // "Other"; it's shown to the patient. Optional so the dashboard's
-            // quick Decline still works.
+            // The reason is required and is shown to the patient.
             $declineReason = trim((string) ($_POST['decline_reason'] ?? ''));
             if ($declineReason === 'Other') $declineReason = trim((string) ($_POST['decline_reason_other'] ?? ''));
             $declineReason = mb_substr($declineReason, 0, 255);
+            if ($declineReason === '') {
+                $errors[] = 'Please provide a reason for declining this appointment.';
+            } else {
             try {
                 $pdo->beginTransaction();
                 $lookup = $pdo->prepare(
@@ -122,6 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($pdo->inTransaction()) $pdo->rollBack();
                 error_log('Reject request failed: ' . $e->getMessage());
                 $errors[] = 'We could not decline this request.';
+            }
             }
         } elseif ($formType === 'reschedule_request') {
             $newDate = trim((string) ($_POST['appointment_date'] ?? ''));
@@ -276,6 +297,8 @@ if ($pdo && $clinicId) {
             "SELECT a.AppointmentID, a.AppointmentTime, a.Concern, a.Status, a.BookingFeePaid,
                     pat.FirstName, pat.LastName, phy.LastName AS PhyLastName,
                     (SELECT q.QueueNumber FROM Queue q WHERE q.AppointmentID = a.AppointmentID ORDER BY q.CreatedAt DESC LIMIT 1) AS QueueNumber,
+                    (SELECT q.ScheduledNumber FROM Queue q WHERE q.AppointmentID = a.AppointmentID ORDER BY q.CreatedAt DESC LIMIT 1) AS ScheduledNumber,
+                    (SELECT q.RegularNumber FROM Queue q WHERE q.AppointmentID = a.AppointmentID ORDER BY q.CreatedAt DESC LIMIT 1) AS RegularNumber,
                     (SELECT q.Status FROM Queue q WHERE q.AppointmentID = a.AppointmentID ORDER BY q.CreatedAt DESC LIMIT 1) AS QueueStatus
              FROM Appointments a
              JOIN Users pat ON pat.UserID = a.PatientID
@@ -472,7 +495,7 @@ require __DIR__ . '/../includes/header.php';
             <span class="sa-time"><?= htmlspecialchars(date('g:i A', strtotime($row['AppointmentTime']))) ?></span>
             <div class="sa-row-main">
               <strong><?= htmlspecialchars($row['FirstName'] . ' ' . $row['LastName']) ?></strong>
-              <p><?= htmlspecialchars($concernLabel($row['Concern'])) ?> · <?= $row['PhyLastName'] ? 'Dr. ' . htmlspecialchars($row['PhyLastName']) : 'No physician' ?><?= $row['BookingFeePaid'] ? '' : ' · walk-in' ?><?= $row['QueueNumber'] ? ' · queue #' . (int) $row['QueueNumber'] . ' (' . htmlspecialchars(str_replace('_', ' ', $row['QueueStatus'])) . ')' : '' ?></p>
+              <p><?= htmlspecialchars($concernLabel($row['Concern'])) ?> · <?= $row['PhyLastName'] ? 'Dr. ' . htmlspecialchars($row['PhyLastName']) : 'No physician' ?><?= $row['BookingFeePaid'] ? '' : ' · walk-in' ?><?= $row['QueueNumber'] ? ' - queue ' . ($row['ScheduledNumber'] !== null ? 'S-' . (int) $row['ScheduledNumber'] : '#' . (int) ($row['RegularNumber'] ?? $row['QueueNumber'])) . ' (' . htmlspecialchars(str_replace('_', ' ', $row['QueueStatus'])) . ')' : '' ?></p>
             </div>
             <span class="ma-pill <?= $pillClass ?>"><?= $pillLabel ?></span>
           </article>
